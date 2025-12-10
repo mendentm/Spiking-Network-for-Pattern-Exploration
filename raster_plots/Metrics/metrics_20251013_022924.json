@@ -1,0 +1,19 @@
+{
+  "mean_rate_exc": 0.37799999999999995,
+  "mean_rate_inh": 0.6,
+  "mean_rate_total": 0.45199999999999996,
+  "std_rate_exc": 0.46809828027883205,
+  "std_rate_inh": 0.5959865770300535,
+  "cv_exc": 1.2383552388328891,
+  "cv_inh": 0.9933109617167559,
+  "synchrony_index": 232.0211150442479,
+  "burst_frequency": 0.4,
+  "participation_ratio": 0.6533333333333333,
+  "isi_cv": 4.640402281411961,
+  "mean_population_rate": 67.8,
+  "spatial_correlation": 0.9999999999999988,
+  "wave_score": 0.0,
+  "activity_sparsity": 0.006533333333333334,
+  "total_spikes": 339,
+  "duration": 5000
+}
