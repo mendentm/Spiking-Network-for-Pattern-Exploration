@@ -31,7 +31,7 @@ from patterns import (
 # ============================================================================
 
 # --- EXECUTION MODE ---
-RUN_MODE = 'compare_all'  # Options: 'simulation', 'pattern', 'autonomous', 'compare_all'
+RUN_MODE = 'simulation'  # Options: 'simulation', 'pattern', 'autonomous', 'compare_all'
 
 # --- NETWORK PARAMETERS ---
 Ne = 100                    # Number of excitatory neurons

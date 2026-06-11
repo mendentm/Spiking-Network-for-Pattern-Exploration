@@ -2,7 +2,7 @@
 
 An advanced simulation framework for spiking neural networks (SNNs) using the Izhikevich neuron model, featuring autonomous pattern exploration, comprehensive metrics analysis, and interactive 3D visualization.
 
-## 🚀 New Features
+## 🚀 Features
 
 ### Autonomous Agent System
 - **4 Exploration Strategies**: Random, Sequential, Metric Optimization, and Diversity Maximization
