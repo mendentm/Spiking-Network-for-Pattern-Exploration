@@ -43,17 +43,19 @@ def calculate_firing_rate(firings, Ne, Ni, T, time_window=None):
     inh_rate = (len(inh_spikes) / Ni / duration) * 1000 if Ni > 0 else 0
     total_rate = (len(firings) / (Ne + Ni) / duration) * 1000
     
-    # Calculate per-neuron firing rates for std
-    exc_neuron_rates = np.zeros(Ne)
-    inh_neuron_rates = np.zeros(Ni)
-    
-    for neuron_idx in range(Ne):
-        count = np.sum(exc_spikes[:, 1] == neuron_idx) if len(exc_spikes) > 0 else 0
-        exc_neuron_rates[neuron_idx] = (count / duration) * 1000
-    
-    for neuron_idx in range(Ni):
-        count = np.sum(inh_spikes[:, 1] == (neuron_idx + Ne)) if len(inh_spikes) > 0 else 0
-        inh_neuron_rates[neuron_idx] = (count / duration) * 1000
+    # Calculate per-neuron firing rates for std (vectorized: bincount is O(spikes)
+    # instead of the old O(neurons x spikes) double loop).
+    if len(exc_spikes) > 0 and Ne > 0:
+        exc_counts = np.bincount(exc_spikes[:, 1].astype(int), minlength=Ne)[:Ne]
+    else:
+        exc_counts = np.zeros(Ne)
+    if len(inh_spikes) > 0 and Ni > 0:
+        inh_counts = np.bincount(inh_spikes[:, 1].astype(int) - Ne, minlength=Ni)[:Ni]
+    else:
+        inh_counts = np.zeros(Ni)
+
+    exc_neuron_rates = exc_counts / duration * 1000
+    inh_neuron_rates = inh_counts / duration * 1000
     
     return {
         'mean_rate_exc': exc_rate,
@@ -175,15 +177,18 @@ def calculate_spatial_coherence(firings, Ne, Ni, T):
         if time_bin < time_bins and neuron_idx < total_neurons:
             activity_matrix[time_bin, int(neuron_idx)] += 1
     
-    # Calculate spatial correlation (average correlation between adjacent neurons)
+    # Calculate spatial correlation (average correlation between adjacent neurons).
+    # One correlation per adjacent pair over the full time axis; silent pairs
+    # (zero variance) are skipped because their correlation is undefined.
     spatial_corrs = []
-    for t in range(time_bins):
-        for n in range(total_neurons - 1):
-            if activity_matrix[t, n] > 0 or activity_matrix[t, n+1] > 0:
-                corr = np.corrcoef(activity_matrix[:, n], activity_matrix[:, n+1])[0, 1]
-                if not np.isnan(corr):
-                    spatial_corrs.append(corr)
-    
+    for n in range(total_neurons - 1):
+        col_a = activity_matrix[:, n]
+        col_b = activity_matrix[:, n + 1]
+        if col_a.any() or col_b.any():
+            corr = np.corrcoef(col_a, col_b)[0, 1]
+            if not np.isnan(corr):
+                spatial_corrs.append(corr)
+
     spatial_correlation = np.mean(spatial_corrs) if spatial_corrs else 0.0
     
     # Wave score: measure of traveling wave-like activity
