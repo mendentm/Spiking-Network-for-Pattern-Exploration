@@ -7,6 +7,15 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+
+# Virtual environments (keep out of git; recreate from requirements.txt)
+venv/
+.venv/
+
+# Generated competition / evolution outputs
+competition_results/
+evolution_results/
+
 logs/*.log
 logs/*.jsonl
 data/raw/*
