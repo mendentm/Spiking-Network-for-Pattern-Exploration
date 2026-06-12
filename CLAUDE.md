@@ -1,35 +1,36 @@
 # CLAUDE.md — RSNN System
-# Generated: 2026-06-10 | Template v1.0
+# Updated: 2026-06-10 | Template v1.1 (project-specific)
 
 ---
 
 ## Identity & Role
-You are a senior engineer working on **RSNN System**.
+You are a senior research engineer working on the **RSNN System** (spiking neural
+network simulator with autonomous pattern exploration).
 - **Primary language:** Python (default unless justified otherwise)
-- **Stack:** Python, PyTorch, FastAPI, PostgreSQL
-- **Project type:** existing project
+- **Stack:** Python 3.x, NumPy, SciPy (sparse), Matplotlib, Plotly, tqdm, pandas (CPU-only)
+- **Project type:** Research/simulation tool / portfolio project
 
 ---
 
 ## Project Context
-**Goal:** A locally-deployed project: RSNN System.
-**Status:** Early prototype
-**Key constraints:** Local-only, no paid APIs, RTX 3060 Ti
+**Goal:** Simulate spiking neural networks with the **Izhikevich neuron model**, then
+**autonomously explore** the space of activity patterns, score them with a metrics suite,
+and visualize results as 2D/3D raster plots.
+**Status:** Working simulator with autonomous agent, metrics, and visualization.
+**Key constraints:** Local-only, no paid APIs. Pure NumPy/SciPy on CPU — no PyTorch, no GPU.
 
 ---
 
 ## Architecture Baseline
-Every significant feature must address these layers before shipping:
-
 | Layer | Implementation |
 |---|---|
-| **Data / Storage** | To be defined � update CLAUDE.md |
-| **Metrics** | Logged to `logs/metrics.jsonl` — key KPIs defined per module |
-| **Visualization** | To be defined � update CLAUDE.md |
-| **Deployment** | Local venv / Docker Compose |
-| **Logging** | Python `logging` module only — never bare `print()`. Levels: DEBUG (dev), INFO (staging), WARNING+ERROR (prod) |
-| **Security** | Secrets via `.env` + `python-dotenv`. No credentials in code or git. |
-| **Testing** | `pytest` for all core logic. Mock external calls. Run with `make test`. |
+| **Data / Storage** | Spike data saved as `.npy`; metrics as JSON; experiment runs tracked under `experiments/` via `experiment_tracker.py`. Outputs under `raster_plots/` (`2D Plots/`, `3D Plots/`, `Metrics/`, `Firing Data/`). |
+| **Metrics** | `metrics.py` — firing-rate (mean rate, CV), synchrony (synchrony index, burst frequency, participation ratio, ISI CV), spatial (spatial correlation, wave score, sparsity). |
+| **Visualization** | `plot_3d_raster.py` — 2D raster (Matplotlib) + 3D raster (Plotly interactive HTML or static PNG). |
+| **Deployment** | Local venv, single-process. Run `python main.py`. No server. |
+| **Logging** | Currently uses `print()` with status banners — see Technical Debt; prefer `logging` for new code. |
+| **Security** | No secrets/credentials in this project. |
+| **Testing** | No formal `pytest` suite yet — see Technical Debt. `RUN_MODE='compare_all'` acts as a smoke test across all patterns. |
 
 ---
 
@@ -50,7 +51,7 @@ Before writing any new feature, confirm all boxes are checked:
 - [ ] Goal stated in one sentence
 - [ ] Inputs and outputs defined
 - [ ] Edge cases listed
-- [ ] Success criteria is measurable (e.g., "RMSE < 0.05 on validation set")
+- [ ] Success criteria is measurable (e.g., "synchrony_index within X of target on the optimize strategy")
 
 If any are missing → **ask before writing code**.
 
@@ -58,9 +59,9 @@ If any are missing → **ask before writing code**.
 
 ## Verifier Protocol (Layer 2 — Karpathy)
 Every feature ships with:
-- At minimum one `pytest` test runnable with no manual setup
-- An INFO-level log line confirming successful execution
-- An entry in `CHANGELOG.md` describing what changed and why
+- A runnable check (at minimum `RUN_MODE='compare_all'` passing end-to-end)
+- An INFO-level (or banner) line confirming successful execution
+- A metrics JSON written so results are reproducible
 
 ---
 
@@ -73,16 +74,41 @@ Every feature ships with:
 ---
 
 ## Project-Specific Context
-Retrofitted from existing project. Update this section as the project evolves.
+
+**Control model:** `main.py` is a **config-at-the-top control center** — all knobs
+(`RUN_MODE`, `Ne`/`Ni`, `T`, neuron types, pattern params, viz/metrics/save flags) live in a
+block at the top of the file. Change behavior there.
+
+**`RUN_MODE` options:**
+- `simulation` — full Izhikevich sim with sparse random connectivity
+- `pattern` — generate one named pattern from the library
+- `autonomous` — run an exploration agent (strategies: `random`, `sequential`, `optimize`, `diversity`)
+- `compare_all` — run every pattern and rank by metrics (acts as a smoke test)
+
+**Modules:**
+- `main.py` — control center / entrypoint
+- `patterns.py` — `PatternLibrary` + generators (traveling wave, synchronized bursts, spiral, game_of_life, ripple, clusters, checkerboard, random)
+- `autonomous_agent.py` — exploration strategies + `create_agent`
+- `experiment_tracker.py` — run persistence/metadata
+- `metrics.py` — `calculate_all_metrics`, `print_metrics_summary`
+- `plot_3d_raster.py` — 2D/3D raster rendering
+
+**Neuron model:** Izhikevich. Excitatory = Regular Spiking (RS), Inhibitory = Low-Threshold
+Spiking (LTS) by default; also FS/IB/CH presets. Sparse connectivity (default 10%), excitatory
+weights +0.5, inhibitory −1.0. Set `RANDOM_SEED` (int) for reproducibility.
 
 ---
 
 ## Known Decisions & Locked Architecture
-<!-- Paste finalized decisions here so Claude doesn't re-open them -->
-- [ ] None yet — add as the project matures
+- **Izhikevich** is the chosen neuron model; `NEURON_MODELS` holds the `[a, b, c, d, name]` presets.
+- **Sparse (`scipy.sparse`) connectivity** is the default and recommended path (`USE_SPARSE_MATRICES = True`).
+- Config-at-top-of-`main.py` is the deliberate control surface — don't move it to argparse without asking.
+- Outputs are organized per-pattern under `raster_plots/<2D|3D>/<pattern>/`.
 
 ---
 
 ## Known Technical Debt
-<!-- Track debt explicitly so it doesn't get silently worked around -->
-- [ ] None logged yet
+- **Two virtual environments** exist (`venv/` and `.venv/`) — consolidate to one (prefer `.venv/`).
+- Status output uses `print()` banners rather than the `logging` module.
+- No formal `pytest` suite; `requirements.txt` exists but there is no `pyproject.toml`.
+- `main.py` imports the pattern library twice (top of file and again mid-module) — harmless but redundant.
