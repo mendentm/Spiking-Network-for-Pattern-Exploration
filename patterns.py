@@ -64,23 +64,19 @@ def generate_traveling_wave(Ne, Ni, T, wave_speed=1.0, wave_width=50):
         np.array: Firings array [time, neuron_index]
     """
     total_neurons = Ne + Ni
-    estimated_spikes = int(T * wave_width * 0.7)
-    firings_array = np.zeros((estimated_spikes, 2))
-    spike_count = 0
+    firings_list = []
 
     for t in range(T):
         wave_center = int((t * wave_speed) % total_neurons)
         start_neuron = wave_center - wave_width // 2
         end_neuron = wave_center + wave_width // 2
-        
+
         for i in range(start_neuron, end_neuron):
             neuron_idx = i % total_neurons
             if np.random.rand() < 0.7:
-                if spike_count < estimated_spikes:
-                    firings_array[spike_count] = [t, neuron_idx]
-                    spike_count += 1
-    
-    return firings_array[:spike_count]
+                firings_list.append([t, neuron_idx])
+
+    return np.array(firings_list) if firings_list else np.array([]).reshape(0, 2)
 
 
 def generate_synchronized_bursts(Ne, Ni, T, frequency=10, participation=0.8):

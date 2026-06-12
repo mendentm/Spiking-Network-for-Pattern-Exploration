@@ -6,7 +6,8 @@ from datetime import datetime
 import plotly.graph_objects as go
 
 # --- GENERATE 3D PLOT ---
-def generate_3d_raster_plot(firings, Ne, Ni, T, output_filename="3d_raster_plot.png"):
+def generate_3d_raster_plot(firings, Ne, Ni, T, output_filename="3d_raster_plot.png",
+                            downsample=None, show=False):
     """
     Generates and saves a 3D spatiotemporal raster plot.
 
@@ -16,8 +17,15 @@ def generate_3d_raster_plot(firings, Ne, Ni, T, output_filename="3d_raster_plot.
         Ni (int): Number of inhibitory neurons.
         T (int): Total simulation time in ms.
         output_filename (str): The name of the file to save the plot.
+        downsample (int): If set, randomly keep at most this many spikes for plotting.
+        show (bool): If True, display the figure interactively (blocks); otherwise close it.
     """
     print("Generating 3D raster plot...")
+
+    if downsample and len(firings) > downsample:
+        idx = np.random.choice(len(firings), downsample, replace=False)
+        firings = firings[idx]
+        print(f"  Downsampled to {len(firings)} spikes")
 
     # --- 1. Assign spatial (X, Y) coordinates to each neuron ---
     total_neurons = Ne + Ni
@@ -61,8 +69,11 @@ def generate_3d_raster_plot(firings, Ne, Ni, T, output_filename="3d_raster_plot.
     ax.view_init(elev=25, azim=-135)
     
     plt.savefig(output_filename, dpi=300, bbox_inches='tight')
-    plt.show()
-    
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
     print(f"✅ 3D plot saved successfully to: {output_filename}")
 
 import plotly.graph_objects as go

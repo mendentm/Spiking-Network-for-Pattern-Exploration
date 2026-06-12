@@ -11,15 +11,24 @@ Usage:
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import sys
 from datetime import datetime
-from scipy.sparse import csr_matrix, lil_matrix
+from scipy.sparse import csr_matrix
 from tqdm import tqdm
+
+# Ensure emoji/banner output doesn't crash on Windows consoles using a legacy
+# code page (cp1252) when stdout is piped or redirected to a file.
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass
 from plot_3d_raster import generate_3d_raster_plot, generate_3d_raster_plotly
 from autonomous_agent import ExplorationStrategy, RandomExploration, SequentialExploration, MetricOptimization
 from experiment_tracker import ExperimentTracker
 from patterns import PatternLibrary, get_library
 from autonomous_agent import create_agent
 from metrics import calculate_all_metrics, print_metrics_summary
+from neuron_models import NEURON_MODELS
 from patterns import (
     generate_traveling_wave, generate_synchronized_bursts, generate_spiral_wave,
     generate_random_activity, generate_localized_clusters, generate_ripple_pattern,
@@ -122,7 +131,9 @@ RANDOM_SEED = None             # Set to integer for reproducibility, None for ra
 
 # Set random seed if specified
 if RANDOM_SEED is not None:
+    import random as _random
     np.random.seed(RANDOM_SEED)
+    _random.seed(RANDOM_SEED)  # agent strategies use the stdlib `random` module
     print(f"🎲 Random seed set to: {RANDOM_SEED}")
 
 # Import modules
@@ -142,14 +153,9 @@ os.makedirs(FIRINGS_DIR, exist_ok=True)
 # ============================================================================
 # NEURON MODEL DEFINITIONS
 # ============================================================================
-
-NEURON_MODELS = {
-    'RS': [0.02, 0.2, -65, 8, "Regular Spiking"],
-    'FS': [0.1, 0.2, -65, 2, "Fast Spiking"],
-    'LTS': [0.02, 0.25, -65, 2, "Low-Threshold Spiking"],
-    'IB': [0.02, 0.2, -55, 4, "Intrinsically Bursting"],
-    'CH': [0.02, 0.2, -50, 2, "Chattering"]
-}
+# NEURON_MODELS (the [a, b, c, d, name] Izhikevich presets) now lives in
+# neuron_models.py so the competition reservoirs share the exact same definitions.
+# It is imported at the top of this file.
 
 # ============================================================================
 # CORE FUNCTIONS
@@ -183,13 +189,14 @@ def setup_network():
     
     if USE_SPARSE_MATRICES:
         print("Building sparse connectivity matrix...")
-        S = lil_matrix((N_total, N_total))
-        for i in range(N_total):
-            exc_targets = np.random.rand(Ne) < connection_prob
-            S[i, :Ne] = 0.5 * np.random.rand(Ne) * exc_targets
-            inh_targets = np.random.rand(Ni) < connection_prob
-            S[i, Ne:] = -1 * np.random.rand(Ni) * inh_targets
-        S = S.tocsr()
+        # Vectorized build (replaces a per-row Python loop over lil_matrix):
+        # draw all weights and the connection mask at once, then store as CSR.
+        weights = np.hstack((
+            0.5 * np.random.rand(N_total, Ne),
+            -1.0 * np.random.rand(N_total, Ni),
+        ))
+        mask = np.random.rand(N_total, N_total) < connection_prob
+        S = csr_matrix(weights * mask)
         print(f"✓ Sparse matrix: {S.nnz} connections ({S.nnz/(N_total**2)*100:.2f}% density)")
     else:
         print("Building dense connectivity matrix...")
@@ -210,15 +217,15 @@ def run_simulation(a, b, c, d, S):
     N_total = Ne + Ni
     v = -65 * np.ones((N_total, 1))
     u = b * v
-    firings = np.array([]).reshape(0, 2)
+    firing_chunks = []           # accumulate [t, neuron] blocks, stack once at the end
     firing_bins = {t: [] for t in range(-1, T)}
-    
+
     iterator = tqdm(range(T), desc="Simulating") if SHOW_PROGRESS_BAR else range(T)
-    
+
     for t in iterator:
         # Input current
         I = np.vstack((5 * np.random.randn(Ne, 1), 2 * np.random.randn(Ni, 1)))
-        
+
         # Synaptic input
         if firing_bins[t - 1]:
             fired_indices = np.array(firing_bins[t - 1])
@@ -226,21 +233,24 @@ def run_simulation(a, b, c, d, S):
                 I += S[:, fired_indices].sum(axis=1).reshape(-1, 1)
             else:
                 I += np.sum(S[:, fired_indices], axis=1).reshape(-1, 1)
-        
+
         # Euler integration
         v += 0.5 * (0.04 * v**2 + 5 * v + 140 - u + I)
         v += 0.5 * (0.04 * v**2 + 5 * v + 140 - u + I)
         u += a * (b * v - u)
-        
+
         # Detect spikes
         fired = np.where(v >= 30)[0]
         if fired.size > 0:
-            new_firings = np.hstack((t * np.ones((fired.size, 1)), fired.reshape(-1, 1)))
-            firings = np.vstack((firings, new_firings))
+            # Accumulate this timestep's spikes; one vstack at the end avoids the
+            # old O(n^2) re-allocation from vstack-ing inside the loop.
+            firing_chunks.append(np.column_stack((np.full(fired.size, t), fired)))
             firing_bins[t] = fired.tolist()
             v[fired] = c[fired]
             u[fired] = u[fired] + d[fired]
-    
+
+    firings = (np.vstack(firing_chunks).astype(float)
+               if firing_chunks else np.array([]).reshape(0, 2))
     print(f"✓ Simulation complete: {len(firings)} spikes generated")
     return firings
 
@@ -433,7 +443,8 @@ def create_plots(firings, name_e, name_i, title_suffix="", pattern_name=None):
             generate_3d_raster_plot(
                 firings, Ne, Ni, T,
                 output_filename=full_path_3d,
-                downsample=PLOT_DOWNSAMPLE
+                downsample=PLOT_DOWNSAMPLE,
+                show=SHOW_PLOTS
             )
         
         print(f"✓ 3D plot saved: {full_path_3d}")
@@ -453,7 +464,7 @@ def analyze_firings(firings):
     if SAVE_METRICS_JSON:
         import json
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        metrics_file = os.path.join(OUTPUT_DIR, f"metrics_{timestamp}.json")
+        metrics_file = os.path.join(METRICS_DIR, f"metrics_{timestamp}.json")
         with open(metrics_file, 'w') as f:
             json.dump(metrics, f, indent=2)
         print(f"✓ Metrics saved: {metrics_file}")
@@ -467,7 +478,7 @@ def save_firings(firings):
         return
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    firings_file = os.path.join(OUTPUT_DIR, f"firings_{timestamp}.npy")
+    firings_file = os.path.join(FIRINGS_DIR, f"firings_{timestamp}.npy")
     np.save(firings_file, firings)
     print(f"✓ Firings data saved: {firings_file}")
 
